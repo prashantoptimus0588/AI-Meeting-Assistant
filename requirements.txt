@@ -13,4 +13,3 @@ streamlit
 python-docx
 fpdf2
 python-dotenv
-audioop-lts
