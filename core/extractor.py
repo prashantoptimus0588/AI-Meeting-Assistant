@@ -5,11 +5,14 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 import os 
-
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 def get_llm():
-    return ChatMistralAI(model = "mistral-small-latest", mistral_api_key = os.getenv("MISTRAL_API_KEY"),temperature=0.2)
-
+    return ChatGoogleGenerativeAI(
+        model="gemini-3.5-flash-lite",
+        google_api_key=os.getenv("GOOGLE_API_KEY"),
+        temperature=0.3,
+    )
 
 
 def build_chain(system_prompt : str):

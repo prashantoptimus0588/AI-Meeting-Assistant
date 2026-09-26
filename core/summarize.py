@@ -4,13 +4,21 @@ from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.runnables import RunnableLambda,RunnablePassthrough
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 
 load_dotenv()
 import os
 
+# def get_llm():
+#     return ChatMistralAI(model="mistral-small-2506",temperature=0.3)
+
 def get_llm():
-    return ChatMistralAI(model="mistral-small-2506",temperature=0.3)
+    return ChatGoogleGenerativeAI(
+        model="gemini-3.5-flash-lite",
+        google_api_key=os.getenv("GOOGLE_API_KEY"),
+        temperature=0.3,
+    )
 
 def split_transcript(transcript:str)->list:
     splitter=RecursiveCharacterTextSplitter(
