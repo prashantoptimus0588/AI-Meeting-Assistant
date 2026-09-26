@@ -5,7 +5,10 @@ from pydub import AudioSegment
 
 # Sarvam's sync STT-translate API rejects audio longer than 30s.
 # We slice each chunk into 25s pieces (with a 5s safety margin) before sending.
-SARVAM_PIECE_SECONDS = 25
+# In core/transcriber.py
+
+SARVAM_PIECE_SECONDS = 120  # unchanged
+GROQ_PIECE_SECONDS = 150    # was 600 — dialed back after real-world timeout
 
 
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
@@ -17,6 +20,19 @@ SARVAM_MODEL = os.getenv("SARVAM_STT_MODEL", "saaras:v2.5")
 
 _model = None
 
+# In core/transcriber.py
+
+def get_groq_client():
+    global _groq_client
+    if _groq_client is None:
+        if not GROQ_API_KEY:
+            raise RuntimeError("GROQ_API_KEY is not set in environment / .env")
+        _groq_client = Groq(
+            api_key=GROQ_API_KEY,
+            timeout=120.0,   # seconds — generous enough for a ~150s audio upload
+            max_retries=2,   # retry transient connection errors automatically
+        )
+    return _groq_client
 
 def load_model():
 

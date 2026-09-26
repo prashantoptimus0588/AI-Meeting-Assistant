@@ -1,10 +1,23 @@
 import yt_dlp
 import os
 from pydub import AudioSegment
+import shutil
 
-DOWNLOAD_DIR = 'downloads'
 
+
+
+DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+
+def clear_downloads_folder():
+    """Wipe the downloads folder clean before starting a new run.
+    Old audio is never needed once a video has been processed, so this
+    avoids unbounded disk growth from every past run's leftover files.
+    """
+    if os.path.exists(DOWNLOAD_DIR):
+        shutil.rmtree(DOWNLOAD_DIR)
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 def download_youtube_audio(url :str) ->str:
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
@@ -58,6 +71,7 @@ def chunk_audio(wav_path:str,chunk_minutes:int=10)->list:
 
 
 def process_input(source:str)->list:
+    clear_downloads_folder()
     if source.startswith("http://") or source.startswith("https://"):
         print("Detected YouTube URL. Downloading audio...")
         wav_path=download_youtube_audio(source)

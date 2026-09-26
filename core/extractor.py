@@ -1,11 +1,10 @@
-#Actionableitems , decision , questions 
-
-from langchain_mistralai import ChatMistralAI
+import json
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
-import os 
+import os
 from langchain_google_genai import ChatGoogleGenerativeAI
+
 
 def get_llm():
     return ChatGoogleGenerativeAI(
@@ -14,42 +13,60 @@ def get_llm():
         temperature=0.3,
     )
 
+EXTRACTION_SYSTEM_PROMPT = """You are an expert meeting analyst. From the meeting transcript, extract:
 
-def build_chain(system_prompt : str):
+1. action_items — a list of objects, each with:
+   - "task": task description
+   - "owner": who is responsible (or "Not specified")
+   - "deadline": deadline if mentioned (or "Not specified")
+
+2. key_decisions — a list of strings, each a key decision made in the meeting.
+
+3. questions — a list of strings, each an unresolved question or topic needing follow-up.
+
+If a category has nothing found, return an empty list for it.
+
+Return ONLY valid JSON in exactly this shape, with no markdown fences and no extra text:
+{{
+  "action_items": [{{"task": "...", "owner": "...", "deadline": "..."}}],
+  "key_decisions": ["..."],
+  "questions": ["..."]
+}}
+"""
+
+
+def _build_extraction_chain():
     llm = get_llm()
     return (
-        RunnablePassthrough() | RunnableLambda(lambda x : {"text" : x}) |ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human","{text}"),
-    ]) | llm |StrOutputParser()
+        RunnablePassthrough()
+        | RunnableLambda(lambda x: {"text": x})
+        | ChatPromptTemplate.from_messages(
+            [
+                ("system", EXTRACTION_SYSTEM_PROMPT),
+                ("human", "{text}"),
+            ]
+        )
+        | llm
+        | StrOutputParser()
     )
 
-def extract_action_items(transcript:str)->str:
-    chain = build_chain(
-         "You are an expert meeting analyst. From the meeting transcript, "
-        "extract all action items. For each provide:\n"
-        "- Task description\n"
-        "- Owner (who is responsible)\n"
-        "- Deadline (if mentioned, else write 'Not specified')\n\n"
-        "Format as a numbered list. If none found say 'No action items found.'"
-    )
 
-    return chain.invoke(transcript)
+def extract_all(transcript: str) -> dict:
+    """Single-call replacement for extract_action_items + extract_key_decisions + extract_questions."""
+    chain = _build_extraction_chain()
+    raw = chain.invoke(transcript)
 
+    # Defensive cleanup in case the model wraps output in ```json fences anyway
+    cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
 
-def extract_key_decisions(transcript: str) -> str:
-    chain = build_chain(
-        "You are an expert meeting analyst. From the meeting transcript, "
-        "extract all key decisions made. Format as a numbered list. "
-        "If none found say 'No key decisions found.'"
-    )
-    return chain.invoke(transcript)
+    try:
+        data = json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Fallback so a malformed response doesn't crash the whole pipeline
+        data = {"action_items": [], "key_decisions": [], "questions": []}
 
-
-def extract_questions(transcript: str) -> str:
-    chain = build_chain(
-        "From the meeting transcript, extract all unresolved questions "
-        "or topics needing follow-up. Format as a numbered list. "
-        "If none found say 'No open questions found.'"
-    )
-    return chain.invoke(transcript)
+    return {
+        "action_items": data.get("action_items", []),
+        "key_decisions": data.get("key_decisions", []),
+        "questions": data.get("questions", []),
+    }

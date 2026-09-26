@@ -1,17 +1,17 @@
-from langchain_mistralai import ChatMistralAI
+import json
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.runnables import RunnableLambda,RunnablePassthrough
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 from langchain_google_genai import ChatGoogleGenerativeAI
-
+from concurrent.futures import ThreadPoolExecutor
 
 load_dotenv()
 import os
 
-# def get_llm():
-#     return ChatMistralAI(model="mistral-small-2506",temperature=0.3)
+MAX_SUMMARY_WORKERS = 8  # cap concurrent Gemini calls; tune based on your API rate limit
+
 
 def get_llm():
     return ChatGoogleGenerativeAI(
@@ -20,66 +20,87 @@ def get_llm():
         temperature=0.3,
     )
 
-def split_transcript(transcript:str)->list:
-    splitter=RecursiveCharacterTextSplitter(
+
+def split_transcript(transcript: str) -> list:
+    splitter = RecursiveCharacterTextSplitter(
         chunk_size=3000,
         chunk_overlap=200
     )
-
     return splitter.split_text(transcript)
 
 
-def summarize(transcript:str)->str:
-    llm=get_llm()
-    map_prompt=ChatPromptTemplate.from_messages(
+def _map_chunk_summaries(transcript: str) -> str:
+    """Independent per-chunk summaries, run concurrently. Returns the combined text."""
+    llm = get_llm()
+    map_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", "Summarize this portion of a meeting transcript concisely."),
             ("human", "{text}"),
         ]
     )
-
     map_chain = map_prompt | llm | StrOutputParser()
 
-    chunks=split_transcript(transcript)
+    chunks = split_transcript(transcript)
 
-    chunk_summaries=[map_chain.invoke({"text":chunk}) for chunk in chunks]
+    with ThreadPoolExecutor(max_workers=min(MAX_SUMMARY_WORKERS, len(chunks))) as executor:
+        chunk_summaries = list(
+            executor.map(lambda chunk: map_chain.invoke({"text": chunk}), chunks)
+        )
 
-    combined="\n\n".join(chunk_summaries)
+    return "\n\n".join(chunk_summaries)
 
-    combined_prompt=ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                "You are an expert meeting summarizer. Combine these partial summaries "
-                "into one final professional meeting summary in bullet points.",
-            ),
-            ("human", "{text}"),
-        ]
-    )
 
-    combined_chain=(
-        RunnablePassthrough() | RunnableLambda(lambda x:{"text":x}) | combined_prompt | llm | StrOutputParser()
-    )
+TITLE_AND_SUMMARY_SYSTEM_PROMPT = """You are an expert meeting summarizer. You are given partial
+summaries of sequential portions of a meeting transcript.
 
-    return combined_chain.invoke(combined)
+Produce:
+1. "title" — a short professional meeting title (max 8 words).
+2. "summary" — one final professional meeting summary in bullet points, combining
+   all the partial summaries into a single coherent overview.
 
-def generate_title(transcipt : str) -> str:
+Return ONLY valid JSON in exactly this shape, with no markdown fences and no extra text:
+{{
+  "title": "...",
+  "summary": "..."
+}}
+"""
+
+
+def generate_title_and_summary(transcript: str) -> dict:
+    """
+    Single-call replacement for the old generate_title() + the combine step of
+    summarize(). The per-chunk map step still runs first (each chunk is
+    genuinely independent work and is already parallelized), but the final
+    title + summary generation — which both read the same combined text —
+    now happens in one Gemini call instead of two.
+    """
+    combined = _map_chunk_summaries(transcript)
+
     llm = get_llm()
-
-    
-
-    title_chain = (
-        RunnablePassthrough() | RunnableLambda(lambda x:{"text":x}) | 
-        ChatPromptTemplate.from_messages([
-             (
-                "system",
-                "Based on the meeting transcript, generate a short professional meeting title "
-                "(max 8 words). Only return the title, nothing else.",
-            ),
-            ("human", "{text}"),
-        ])
+    chain = (
+        RunnablePassthrough()
+        | RunnableLambda(lambda x: {"text": x})
+        | ChatPromptTemplate.from_messages(
+            [
+                ("system", TITLE_AND_SUMMARY_SYSTEM_PROMPT),
+                ("human", "{text}"),
+            ]
+        )
         | llm
-        |StrOutputParser()
+        | StrOutputParser()
     )
 
-    return title_chain.invoke(transcipt[:2000])
+    raw = chain.invoke(combined)
+    cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+
+    try:
+        data = json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Fallback so a malformed response doesn't crash the pipeline —
+        # summary falls back to the raw combined chunk text, title to a generic default.
+        data = {"title": "Untitled Meeting", "summary": combined}
+
+    return {
+        "title": data.get("title", "Untitled Meeting"),
+        "summary": data.get("summary", combined),
+    }
