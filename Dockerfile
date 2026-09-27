@@ -19,6 +19,9 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Copy dependency files first for Docker layer caching
 COPY pyproject.toml uv.lock ./
 
+# Force CPU-only torch build instead of the default CUDA build
+ENV UV_TORCH_BACKEND=cpu
+
 # Install Python dependencies
 RUN uv sync --frozen --no-dev
 
