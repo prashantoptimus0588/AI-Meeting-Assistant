@@ -42,15 +42,24 @@ def process_meeting(
 
         # 2. Transcribe
         transcript = transcribe_all(chunks, language)
+        print("Transcription complete.")
 
         # 3. Generate title and summary
+        print("Generating title and summary...")
         title_and_summary = generate_title_and_summary(transcript)
-
+        print("Title and summary complete.")
+        
+        
         # 4. Extract information
+        print("Extracting information...")
         extracted = extract_all(transcript)
-
+        print("Extraction complete.")
+        
         # 5. Build RAG chain
+        print("Building RAG chain...")
         rag_chain = build_rag_chain(transcript)
+        print("RAG chain ready.")
+
 
         # Store RAG chain
         meetings[meeting_id]["rag_chain"] = rag_chain
@@ -71,7 +80,7 @@ def process_meeting(
     except Exception as e:
         meetings[meeting_id]["status"] = "failed"
         meetings[meeting_id]["error"] = str(e)
-
+        print(f"Meeting processing failed: {type(e).__name__}: {e}")
 
 @app.get("/health")
 def health_check():
