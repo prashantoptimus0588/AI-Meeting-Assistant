@@ -12,8 +12,8 @@ __pycache__/
 *.pyc
 *.pyo
 
-# UV lock (optional, remove this line if you want to commit it)
-uv.lock
+# # UV lock (optional, remove this line if you want to commit it)
+# uv.lock
 
 # OS
 .DS_Store
