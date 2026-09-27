@@ -1,5 +1,10 @@
 # Virtual environment
 .venv/
+cookies.txt
+.env
+.venv
+__pycache__
+
 
 # Environment variables (contains API keys!)
 .env

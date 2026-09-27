@@ -19,8 +19,10 @@ def clear_downloads_folder():
         shutil.rmtree(DOWNLOAD_DIR)
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-def download_youtube_audio(url :str) ->str:
+def download_youtube_audio(url: str) -> str:
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
+    cookie_path = "cookies.txt"
+    
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": output_path,
@@ -31,13 +33,17 @@ def download_youtube_audio(url :str) ->str:
                 "preferredquality": "192",
             }
         ],
-        # "quiet": True,
     }
+    
+    if os.path.exists(cookie_path):
+        ydl_opts["cookiefile"] = cookie_path
+    else:
+        print("Warning: cookies.txt not found — YouTube downloads may fail bot detection.")
+    
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         filename = ydl.prepare_filename(info).replace(".webm", ".wav").replace(".m4a", ".wav")
     return filename
-
 
 
 
@@ -96,3 +102,6 @@ def process_input(source:str)->list:
 # print("Downloaded:", data)
 # print(chunk_audio(data_final))
 # data_final = convert_to_wav(data)
+
+
+
