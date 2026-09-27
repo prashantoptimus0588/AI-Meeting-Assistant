@@ -21,7 +21,10 @@ def clear_downloads_folder():
 
 def download_youtube_audio(url: str) -> str:
     output_path = os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s")
-    cookie_path = "cookies.txt"
+    
+    # Check both a local cookies.txt and Render's fixed secret-file path
+    possible_paths = ["cookies.txt", "/etc/secrets/cookies.txt"]
+    cookie_path = next((p for p in possible_paths if os.path.exists(p)), None)
     
     ydl_opts = {
         "format": "bestaudio/best",
@@ -35,8 +38,9 @@ def download_youtube_audio(url: str) -> str:
         ],
     }
     
-    if os.path.exists(cookie_path):
+    if cookie_path:
         ydl_opts["cookiefile"] = cookie_path
+        print(f"Using cookies from: {cookie_path}")
     else:
         print("Warning: cookies.txt not found — YouTube downloads may fail bot detection.")
     
