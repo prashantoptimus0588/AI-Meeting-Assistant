@@ -22,12 +22,14 @@ dependencies = [
     "requests>=2.34.2",
     "sentence-transformers>=6.1.0",
     "streamlit>=1.64.0",
+    "torch",
     "yt-dlp>=2026.8.19",
 ]
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cpu" }
