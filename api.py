@@ -9,6 +9,7 @@ from core.summarize import generate_title_and_summary
 from core.transcriber import transcribe_all
 from utils.audio_processor import process_input
 from core.rag_engine import build_rag_chain
+from fastapi.middleware.cors import CORSMiddleware
 
 
 UPLOAD_DIR = "uploads"
@@ -22,6 +23,13 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],   # fine for a no-auth demo; tighten to your Vercel URL later
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Temporary in-memory storage
 meetings = {}
