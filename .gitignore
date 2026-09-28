@@ -11,6 +11,8 @@ __pycache__
 
 # Downloaded audio files
 downloads/
+uploads/
+
 
 # Python cache
 __pycache__/

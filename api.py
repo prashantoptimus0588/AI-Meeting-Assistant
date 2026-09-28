@@ -1,4 +1,6 @@
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+import os
+import shutil
+from fastapi import FastAPI, BackgroundTasks, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 from uuid import uuid4
 
@@ -8,6 +10,11 @@ from core.transcriber import transcribe_all
 from utils.audio_processor import process_input
 from core.rag_engine import build_rag_chain
 
+
+UPLOAD_DIR = "uploads"
+MAX_UPLOAD_MB = 50
+ALLOWED_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".mp3", ".wav", ".m4a"}
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app = FastAPI(
     title="AI Meeting Assistant API",
@@ -33,6 +40,8 @@ def process_meeting(
     meeting_id: str,
     source: str,
     language: str,
+    cleanup_dir: str | None = None,
+
 ):
     try:
         meetings[meeting_id]["status"] = "processing"
@@ -81,6 +90,11 @@ def process_meeting(
         meetings[meeting_id]["status"] = "failed"
         meetings[meeting_id]["error"] = str(e)
         print(f"Meeting processing failed: {type(e).__name__}: {e}")
+
+    finally:
+        if cleanup_dir and os.path.isdir(cleanup_dir):
+            shutil.rmtree(cleanup_dir, ignore_errors=True)
+
 
 @app.get("/health")
 def health_check():
@@ -180,3 +194,55 @@ def chat_with_meeting(
             status_code=500,
             detail=str(e),
         )
+        
+    
+@app.post("/meetings/upload")
+def upload_meeting(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    language: str = Form("english"),
+):
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed: {sorted(ALLOWED_EXTENSIONS)}",
+        )
+
+    meeting_id = str(uuid4())
+    meeting_dir = os.path.join(UPLOAD_DIR, meeting_id)
+    os.makedirs(meeting_dir, exist_ok=True)
+    save_path = os.path.join(meeting_dir, f"input{ext}")
+
+    max_bytes = MAX_UPLOAD_MB * 1024 * 1024
+    written = 0
+    try:
+        with open(save_path, "wb") as out:
+            while chunk := file.file.read(1024 * 1024):
+                written += len(chunk)
+                if written > max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File too large. Max {MAX_UPLOAD_MB} MB.",
+                    )
+                out.write(chunk)
+    except HTTPException:
+        shutil.rmtree(meeting_dir, ignore_errors=True)
+        raise
+
+    meetings[meeting_id] = {
+        "status": "queued",
+        "result": None,
+        "error": None,
+        "rag_chain": None,
+    }
+
+    background_tasks.add_task(
+        process_meeting,
+        meeting_id,
+        save_path,
+        language,
+        meeting_dir,
+    )
+
+    return {"meeting_id": meeting_id, "status": "queued"}
